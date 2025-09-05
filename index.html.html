@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Kubahislej</title>
+  <style>
+    body {
+      margin: 0; font-family: Arial, sans-serif; background: #1e1e2f; color: #fff;
+    }
+    header {
+      background: #27293d; padding: 15px; text-align: center; font-size: 24px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5); display: flex; justify-content: space-between; align-items: center;
+    }
+    #search, #sortSelect {
+      padding: 6px; border-radius: 6px; border: none; width: 180px; margin-left: 5px;
+    }
+    main {
+      padding: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+    }
+    .game-card {
+      background: #2f3147; border-radius: 12px; padding: 15px; text-align: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: transform 0.2s;
+      cursor: grab;
+    }
+    .game-card:active {
+      cursor: grabbing;
+    }
+    .game-card:hover { transform: scale(1.05); }
+    .game-card img {
+      max-width: 100%; border-radius: 8px;
+    }
+    .controls {
+      margin-top: 10px; display: flex; justify-content: space-between; gap: 5px;
+    }
+    button {
+      background: #ff9800; border: none; padding: 8px; border-radius: 6px; color: #fff;
+      font-weight: bold; cursor: pointer; transition: background 0.3s;
+    }
+    button:hover { background: #ff5722; }
+    #addForm {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: #333; padding: 20px; border-radius: 10px; display: none; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    }
+    #addForm input, #addForm select {
+      width: 100%; padding: 8px; margin: 8px 0; border: none; border-radius: 6px;
+    }
+    #overlay {
+      display: none; position: fixed; top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);
+    }
+    #bgPreview {
+      width: 40px; height: 40px; margin-left: 5px; border-radius: 6px; display: none; object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <span>🎮 Alibaba Games</span>
+    <div>
+      <input type="text" id="search" placeholder="Szukaj naszych kozackich gier...">
+      <select id="sortSelect">
+        <option value="custom">Sortuj: Ręcznie</option>
+        <option value="title">Sortuj: Tytuł</option>
+        <option value="category">Sortuj: Kategoria</option>
+      </select>
+      <button id="addBtn">+</button>
+      <button id="bgBtn" style="background: #ffeb3b; color: #000; margin-left:5px;">Tło</button>
+      <button id="bgReset" style="background: #f44336; color: #fff; margin-left:5px;">Reset Tła</button>
+      <img id="bgPreview" alt="Podgląd tła">
+    </div>
+  </header>
+  <main id="gameList"></main>
+
+  <div id="overlay"></div>
+  <div id="addForm">
+    <h3 id="formTitle">Dodaj nową grę</h3>
+    <input type="text" id="gameTitle" placeholder="Tytuł gry">
+    <input type="text" id="gameImage" placeholder="URL obrazka">
+    <input type="text" id="gameLink" placeholder="URL gry (np. game.html)">
+    <select id="gameCategory">
+      <option value="RPG">RPG</option>
+      <option value="Platformówka">Platformówka</option>
+      <option value="Strzelanka">Strzelanka</option>
+      <option value="Logiczna">Logiczna</option>
+      <option value="Wyścigi">Wyścigi</option> 
+    </select>
+    <button id="saveBtn">Zapisz</button>
+  </div>
+
+  <script>
+    const PASSWORD = "3679"; // Hasło do edycji/usuwania
+
+    const gameList = document.getElementById('gameList');
+    const addBtn = document.getElementById('addBtn');
+    const addForm = document.getElementById('addForm');
+    const overlay = document.getElementById('overlay');
+    const searchInput = document.getElementById('search');
+    const sortSelect = document.getElementById('sortSelect');
+    const bgBtn = document.getElementById('bgBtn');
+    const bgReset = document.getElementById('bgReset');
+    const bgPreview = document.getElementById('bgPreview');
+    const saveBtn = document.getElementById('saveBtn');
+    const formTitle = document.getElementById('formTitle');
+
+    let games = JSON.parse(localStorage.getItem('games') || '[]');
+    let editIndex = null;
+    let dragSrcIndex = null;
+
+    function saveGames() {
+      localStorage.setItem('games', JSON.stringify(games));
+    }
+
+
+    function renderGames(filter = '') {
+      gameList.innerHTML = '';
+      let sortedGames = [...games];
+      const sortValue = sortSelect.value;
+
+      if (sortValue !== 'custom') {
+        sortedGames.sort((a, b) => a[sortValue].localeCompare(b[sortValue]));
+      }
+
+      sortedGames
+        .filter(game => game.title.toLowerCase().includes(filter) || game.category.toLowerCase().includes(filter))
+        .forEach((game, index) => {
+          const card = document.createElement('div');
+          card.className = 'game-card';
+          card.setAttribute('draggable', true);
+          card.setAttribute('data-index', index);
+          card.innerHTML = `
+            <img src="${game.image}" alt="${game.title}">
+            <h4>${game.title}</h4>
+            <p><small>Kategoria: ${game.category}</small></p>
+            <div class="controls">
+              <a href="${game.link}" target="_blank"><button>Graj</button></a>
+              <button onclick="checkPassword(() => editGame(${index}))">Edytuj</button>
+              <button onclick="checkPassword(() => removeGame(${index}))">Usuń</button>
+            </div>
+          `;
+
+          card.addEventListener('dragstart', dragStart);
+          card.addEventListener('dragover', dragOver);
+          card.addEventListener('drop', drop);
+          card.addEventListener('dragend', dragEnd);
+
+          gameList.appendChild(card);
+        });
+    }
+
+    function checkPassword(callback) {
+      const pass = prompt("Podaj hasło:");
+      if (pass === PASSWORD) {
+        callback();
+      } else {
+        alert("Błędne hasło!");
+      }
+    }
+
+    function dragStart(e) {
+      dragSrcIndex = +this.dataset.index;
+      this.style.opacity = '0.4';
+    }
+
+    function dragOver(e) {
+      e.preventDefault();
+    }
+
+    function drop(e) {
+      const dragTargetIndex = +this.dataset.index;
+      if (dragSrcIndex !== dragTargetIndex) {
+        const movedGame = games.splice(dragSrcIndex, 1)[0];
+        games.splice(dragTargetIndex, 0, movedGame);
+        saveGames();
+        renderGames(searchInput.value.toLowerCase());
+      }
+    }
+
+    function dragEnd() {
+      this.style.opacity = '1';
+    }
+
+    function openForm() {
+      addForm.style.display = 'block';
+      overlay.style.display = 'block';
+    }
+    function closeForm() {
+      addForm.style.display = 'none';
+      overlay.style.display = 'none';
+      document.getElementById('gameTitle').value = '';
+      document.getElementById('gameImage').value = '';
+      document.getElementById('gameLink').value = '';
+      document.getElementById('gameCategory').value = 'RPG';
+      editIndex = null;
+      formTitle.innerText = 'Dodaj nową grę';
+    }
+
+    function addOrEditGame() {
+      const title = document.getElementById('gameTitle').value;
+      const image = document.getElementById('gameImage').value;
+      const link = document.getElementById('gameLink').value;
+      const category = document.getElementById('gameCategory').value;
+      if (!title || !image || !link) return;
+
+      if (editIndex === null) {
+        games.push({ title, image, link, category });
+      } else {
+        games[editIndex] = { title, image, link, category };
+      }
+      saveGames();
+      renderGames();
+      closeForm();
+    }
+
+    function editGame(index) {
+      const game = games[index];
+      document.getElementById('gameTitle').value = game.title;
+      document.getElementById('gameImage').value = game.image;
+      document.getElementById('gameLink').value = game.link;
+      document.getElementById('gameCategory').value = game.category;
+      editIndex = index;
+      formTitle.innerText = 'Edytuj grę';
+      openForm();
+    }
+
+    function removeGame(index) {
+      games.splice(index, 1);
+      saveGames();
+      renderGames();
+    }
+
+    saveBtn.addEventListener('click', addOrEditGame);
+    addBtn.addEventListener('click', openForm);
+    overlay.addEventListener('click', closeForm);
+    searchInput.addEventListener('input', e => renderGames(e.target.value.toLowerCase()));
+    sortSelect.addEventListener('change', () => renderGames(searchInput.value.toLowerCase()));
+
+    bgBtn.addEventListener('click', () => {
+      const choice = prompt("Wpisz kolor (np. yellow, #f0f0f0) lub URL obrazka:");
+      if (choice) {
+        if (choice.startsWith('http')) {
+          document.body.style.background = `url('${choice}') no-repeat center center / cover`;
+          bgPreview.src = choice;
+          bgPreview.style.display = 'inline-block';
+        } else {
+          document.body.style.background = choice;
+          bgPreview.style.display = 'none';
+        }
+        localStorage.setItem('bg', choice);
+      }
+    });
+
+    bgReset.addEventListener('click', () => {
+      document.body.style.background = '#1e1e2f';
+      bgPreview.style.display = 'none';
+      localStorage.removeItem('bg');
+    });
+
+    const savedBg = localStorage.getItem('bg');
+    if (savedBg) {
+      if (savedBg.startsWith('http')) {
+        document.body.style.background = `url('${savedBg}') no-repeat center center / cover`;
+        bgPreview.src = savedBg;
+        bgPreview.style.display = 'inline-block';
+      } else {
+        document.body.style.background = savedBg;
+      }
+    }
+
+    renderGames();
+  </script>
+</body>
+</html>
