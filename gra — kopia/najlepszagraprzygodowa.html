@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device‑width, initial‑scale=1.0">
+  <title>Gra Przygodowa RPG</title>
+  <style>
+    body {
+      background: #111 url('background.png') center/cover no-repeat;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      padding: 20px;
+      overflow: hidden;
+    }
+    #game-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: rgba(0,0,0,0.7);
+      padding: 20px;
+      border-radius: 10px;
+      position: relative;
+    }
+    #status { margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+    #story { min-height: 100px; transition: opacity 0.5s; }
+    .option {
+      display: block;
+      margin: 8px 0;
+      padding: 10px;
+      background: #333;
+      border: none; color: white; border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .option:hover { background: #555; }
+    #shop { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="status">
+      <div><strong>HP:</strong> <span id="hp">100</span></div>
+      <div><strong>Gold:</strong> <span id="gold">0</span></div>
+      <div><strong>Ekwipunek:</strong> <span id="inventory">Brak</span></div>
+    </div>
+    <div id="story"></div>
+    <div id="options"></div>
+    <div id="shop"></div>
+  </div>
+
+  <!-- Dźwięki -->
+  <audio id="audio" src="audio-sprite.mp3"></audio>
+  <script>
+    const storyEl = document.getElementById('story');
+    const optionsEl = document.getElementById('options');
+    const shopEl = document.getElementById('shop');
+    const hpEl = document.getElementById('hp');
+    const goldEl = document.getElementById('gold');
+    const invEl = document.getElementById('inventory');
+    const audio = document.getElementById('audio');
+    let stopTime = 0;
+    audio.pause();
+
+    function playSound(start, stop) {
+      audio.currentTime = start;
+      stopTime = stop;
+      audio.play();
+    }
+    audio.addEventListener('timeupdate', () => { if (audio.currentTime > stopTime) audio.pause(); });
+
+    let hp = 100, gold = 0;
+    let inventory = [];
+
+    const shopItems = [
+      { name: 'Eliksir', cost: 10 },
+      { name: 'Kamień życia', cost: 25 }
+    ];
+
+    const scenes = {
+      start: {
+        text: "Stoisz na skraju lasu. Widzisz w oddali NPC‑sklep i ścieżkę w lesie.",
+        options: [
+          { text: "Idź do sklepiku", next: "shop" },
+          { text: "Wejdź w las", next: "forest" }
+        ]
+      },
+      shop: {
+        text: "NPC‑kupiec stoi przy straganie. Możesz coś kupić.",
+        options: [
+          { text: "Wróć", next: "start" }
+        ],
+        shop: true
+      },
+      forest: {
+        text: "W lesie czai się potwór! Co robisz?",
+        options: [
+          { text: "Walka!", next: "fight" },
+          { text: "Ucieczka", next: "start", action: ()=> loseHP(10) }
+        ]
+      },
+      fight: {
+        text: "Walczysz!",
+        options: []
+      },
+      fightWin: {
+        text: "Pokonałeś potwora i znalazłeś 20 golda!",
+        options: [
+          { text: "Wróć", next: "start", action: ()=> gold+=20 }
+        ]
+      },
+      fightLose: {
+        text: "Przegrałeś... tracisz przytomność i budzisz się ponownie.",
+        options: [
+          { text: "Obudź się", next: "start", action: resetHP }
+        ]
+      }
+    };
+
+    function updateStatus() {
+      hpEl.textContent = hp;
+      goldEl.textContent = gold;
+      invEl.textContent = inventory.length ? inventory.join(", ") : "Brak";
+    }
+
+    function loseHP(amount) {
+      hp -= amount;
+      if (hp <= 0) {
+        hp = 0;
+        showScene('fightLose');
+      }
+      updateStatus();
+      playSound(1,1.5); // np. dźwięk uderzenia
+    }
+
+    function resetHP() {
+      hp = 100;
+      gold = 0;
+      inventory = [];
+      updateStatus();
+    }
+
+    function showScene(id) {
+      const scene = scenes[id];
+      storyEl.style.opacity = 0;
+      setTimeout(() => {
+        storyEl.textContent = scene.text;
+        storyEl.style.opacity = 1;
+
+        optionsEl.innerHTML = '';
+        shopEl.innerHTML = '';
+
+        if (scene.shop) {
+          shopItems.forEach(item => {
+            const btn = document.createElement('button');
+            btn.className = 'option';
+            btn.textContent = `${item.name} – ${item.cost} gold`;
+            btn.onclick = () => {
+              if (gold >= item.cost) {
+                gold -= item.cost;
+                inventory.push(item.name);
+                updateStatus();
+                playSound(3,3.5); // dźwięk zakupu
+              } else alert("Za mało złota!");
+            };
+            shopEl.appendChild(btn);
+          });
+        }
+
+        scene.options.forEach(opt => {
+          const btn = document.createElement('button');
+          btn.className = 'option';
+          btn.textContent = opt.text;
+          btn.onclick = () => {
+            if (opt.action) opt.action();
+            // walka
+            if (opt.next === 'fight') doFight();
+            else showScene(opt.next);
+          };
+          optionsEl.appendChild(btn);
+        });
+
+      }, 300);
+      updateStatus();
+    }
+
+    function doFight() {
+      if (inventory.includes('Eliksir')) {
+        showScene('fightWin');
+        playSound(4,4.5);
+      } else {
+        loseHP(50);
+        if (hp > 0) showScene('fightLose');
+      }
+    }
+
+    showScene('start');
+  </script>
+</body>
+</html>

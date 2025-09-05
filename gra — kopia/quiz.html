@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Quiz z postaciami — wybór skórek + edytor pytań</title>
+<style>
+  :root{
+    --bg:#0f1221;
+    --card:#171b30;
+    --muted:#8792b0;
+    --text:#e8ebff;
+    --accent:#6be675;
+    --accent-2:#ff7a7a;
+    --accent-3:#6bd7ff;
+    --ring:#93c5fd55;
+    --shadow: 0 8px 30px rgba(0,0,0,.45);
+    --radius:22px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    background: radial-gradient(1200px 700px at 20% -10%, #1b2143 0%, #0f1221 45%, #0b0e19 100%);
+    color:var(--text);
+  }
+  .wrap{max-width:1100px; margin:24px auto; padding:16px}
+  .row{display:grid; gap:16px}
+  .grid-2{grid-template-columns: 1.2fr .8fr}
+  .card{
+    background:linear-gradient(180deg, #1a1f3a 0%, #14182d 100%);
+    border:1px solid #2a3158;
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+  }
+  .card-header{display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #232850; background:#151a34aa; backdrop-filter: blur(6px)}
+  .card-title{font-weight:700; font-size:18px}
+  .card-body{padding:16px}
+  .muted{color:var(--muted); font-size:14px}
+  .btn{
+    appearance:none; border:1px solid #3a4270; background:#1e2445; color:var(--text);
+    padding:10px 14px; border-radius:14px; cursor:pointer; transition:.15s ease; font-weight:600; box-shadow:0 2px 0 #0a0c16 inset;
+  }
+  .btn:hover{transform:translateY(-1px); box-shadow:0 4px 18px rgba(82,118,255,.25)}
+  .btn:active{transform:translateY(0)}
+  .btn.primary{background:linear-gradient(180deg, #3b82f6, #2563eb); border-color:#1d4ed8}
+  .btn.good{background:linear-gradient(180deg, #34d399, #059669); border-color:#047857}
+  .btn.bad{background:linear-gradient(180deg, #f87171, #ef4444); border-color:#b91c1c}
+  .btn.ghost{background:#0000; border-color:#3a4270}
+  .btn.small{padding:8px 10px; font-size:13px}
+  .stack{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .choices{display:grid; gap:10px; grid-template-columns: repeat(2, minmax(0,1fr))}
+  .choices .btn{justify-content:flex-start}
+  .answer{display:flex; gap:10px; align-items:center}
+  .pill{font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid #3a4270; background:#171d3a; color:var(--muted)}
+  .question{font-size:18px; line-height:1.4}
+  .bar{height:10px; background:#0c1025; border-radius:999px; border:1px solid #2a3158; overflow:hidden}
+  .bar > div{height:100%; background:linear-gradient(90deg, #60a5fa, #34d399); width:0%}
+  .sprite-stage{
+    display:grid; grid-template-columns: 160px 1fr; gap:16px; align-items:center;
+  }
+  .sprite-box{
+    width:160px; height:160px; border-radius:18px; border:1px dashed #3a4270;
+    background: conic-gradient(from 200deg at 70% 20%, #1e2549, #111633);
+    display:grid; place-items:center; position:relative; overflow:hidden;
+  }
+  .sprite-box img{max-width:92%; max-height:92%; image-rendering: pixelated;}
+  .skin-picker{display:flex; gap:8px; flex-wrap:wrap}
+  .chip{
+    display:inline-grid; grid-auto-flow:column; gap:8px; align-items:center;
+    border:1px solid #3a4270; background:#151a34; padding:6px 10px; border-radius:14px;
+    cursor:pointer; user-select:none;
+  }
+  .chip input{display:none}
+  .chip.active{outline:2px solid #60a5fa; border-color:#2563eb; background:#101939}
+  .chip img{width:28px; height:28px; border-radius:6px; object-fit:cover; image-rendering: pixelated}
+  .sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0}
+  .grow{flex:1}
+  .right{margin-left:auto}
+  .msg{
+    position:fixed; inset:0; display:none; place-items:center; background:#0008; backdrop-filter: blur(4px); z-index:50;
+  }
+  .msg.show{display:grid}
+  .toast{
+    min-width: min(560px, 92vw);
+    background: #101532; border: 1px solid #263062;
+    border-radius: 18px; padding: 18px; text-align:center; box-shadow:var(--shadow);
+  }
+  .toast.good{border-color:#0e7a5c; background:linear-gradient(180deg, #0d2d2a, #0b1620)}
+  .toast.bad{border-color:#7a2031; background:linear-gradient(180deg, #2d0d17, #0b1620)}
+  .toast h2{margin:.2rem 0 .5rem; font-size:28px}
+  .toast p{margin:0 0 .5rem; color:var(--muted)}
+  .editor-grid{display:grid; gap:12px}
+  @media (min-width:900px){ .editor-grid{ grid-template-columns: 1fr 1fr; } }
+  .field{display:grid; gap:6px}
+  .field input[type="text"], .field textarea, .field select{
+    width:100%; padding:10px 12px; border-radius:12px; border:1px solid #37406d;
+    background:#0f1430; color:var(--text); outline: none;
+  }
+  .list{display:grid; gap:8px; max-height:320px; overflow:auto; padding-right:4px}
+  .row-item{display:grid; grid-template-columns: 1fr auto; align-items:center; gap:10px; padding:8px 10px; border:1px solid #2b3467; background:#12183a; border-radius:12px}
+  .row-item .muted{font-size:13px}
+  .mini{font-size:12px; color:var(--muted)}
+  .danger{color:#ffb4b4}
+  .spacer{height:6px}
+</style>
+</head>
+<body>
+<div class="wrap row grid-2">
+  <!-- LEWA: GRA -->
+  <section class="card" id="game">
+    <header class="card-header">
+      <div class="card-title">Quiz — wybierz postać i graj</div>
+      <div class="stack">
+        <span class="pill" id="progress-pill">Pytanie <b id="qNo">1</b>/<b id="qTotal">1</b></span>
+        <span class="pill">Wynik: <b id="score">0</b></span>
+        <button class="btn ghost small" id="resetBtn" title="Zacznij od nowa">↺ Reset</button>
+      </div>
+    </header>
+    <div class="card-body row" style="gap:18px">
+      <div class="sprite-stage">
+        <div class="sprite-box" id="spriteBox" title="Wgraj własny sprite (PNG/WebP z przezroczystością)">
+          <img id="spriteImg" alt="sprite" />
+          <input type="file" id="spriteInput" accept="image/png,image/webp,image/gif,image/jpeg" class="sr-only" />
+          <button class="btn small ghost" id="uploadBtn" style="position:absolute; bottom:8px; left:8px;">Wgraj sprite</button>
+          <button class="btn small ghost" id="clearSprite" style="position:absolute; bottom:8px; right:8px;">Wyczyść</button>
+        </div>
+        <div>
+          <div class="mini muted">Skórki</div>
+          <div class="skin-picker" id="skinPicker"></div>
+          <div class="spacer"></div>
+          <div class="mini muted">Podgląd</div>
+          <div class="stack">
+            <div class="pill" id="skinName">Domyślny</div>
+            <button class="btn small" id="startBtn">Start</button>
+            <button class="btn small ghost" id="nextBtn" disabled>Dalej ⮞</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bar"><div id="barFill"></div></div>
+
+      <div class="question" id="questionText">Kliknij „Start”, aby zacząć!</div>
+      <div class="choices" id="choicesBox"></div>
+    </div>
+  </section>
+
+  <!-- PRAWA: EDYTOR PYTAŃ / USTAWIENIA -->
+  <section class="card" id="editor">
+    <header class="card-header">
+      <div class="card-title">Edytor pytań</div>
+      <div class="stack">
+        <button class="btn small ghost" id="exportBtn">Eksport JSON</button>
+        <button class="btn small ghost" id="importBtn">Import JSON</button>
+        <input type="file" id="importFile" accept="application/json" class="sr-only" />
+      </div>
+    </header>
+    <div class="card-body row" style="gap:16px">
+      <div class="editor-grid">
+        <div class="field">
+          <label>Pytanie</label>
+          <textarea id="fQuestion" rows="3" placeholder="Treść pytania"></textarea>
+        </div>
+        <div class="field">
+          <label>Poprawna odpowiedź</label>
+          <input id="fCorrect" type="text" placeholder="Tekst poprawnej odpowiedzi">
+        </div>
+        <div class="field">
+          <label>Błędna 1</label>
+          <input id="fWrong1" type="text" placeholder="Błędna odpowiedź">
+        </div>
+        <div class="field">
+          <label>Błędna 2</label>
+          <input id="fWrong2" type="text" placeholder="Błędna odpowiedź (opcjonalnie)">
+        </div>
+        <div class="field">
+          <label>Błędna 3</label>
+          <input id="fWrong3" type="text" placeholder="Błędna odpowiedź (opcjonalnie)">
+        </div>
+        <div class="field">
+          <label>Kategoria (opcjonalnie)</label>
+          <input id="fCategory" type="text" placeholder="np. Matematyka">
+        </div>
+      </div>
+      <div class="stack">
+        <button class="btn good" id="addBtn">➕ Dodaj / Zapisz</button>
+        <button class="btn ghost" id="clearForm">Wyczyść formularz</button>
+        <span class="muted" id="editHint"></span>
+      </div>
+      <div class="spacer"></div>
+      <div class="mini muted">Lista pytań (kliknij, by edytować)</div>
+      <div class="list" id="qList"></div>
+    </div>
+  </section>
+</div>
+
+<!-- REAKCJE -->
+<div class="msg" id="msg">
+  <div class="toast" id="toast">
+    <h2 id="toastTitle">Dobra robota!</h2>
+    <p id="toastDesc">To była poprawna odpowiedź.</p>
+    <div class="stack" style="justify-content:center">
+      <button class="btn small" id="toastNext">Dalej ⮞</button>
+      <button class="btn small ghost" id="toastClose">Zamknij</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- UTIL ---------- */
+const $ = sel => document.querySelector(sel);
+const el = (tag, props={}, ...children) => {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const c of children) n.append(c);
+  return n;
+};
+const shuffle = arr => arr.map(a=>[Math.random(),a]).sort((a,b)=>a[0]-b[0]).map(([,a])=>a);
+const storage = {
+  get(k, fallback){ try{ return JSON.parse(localStorage.getItem(k)) ?? fallback }catch{ return fallback } },
+  set(k, v){ localStorage.setItem(k, JSON.stringify(v)) }
+};
+
+/* ---------- DOM ---------- */
+const spriteImg = $('#spriteImg');
+const spriteInput = $('#spriteInput');
+$('#uploadBtn').onclick = ()=> spriteInput.click();
+$('#clearSprite').onclick = ()=> { spriteImg.src = ""; storage.set('sprite',''); };
+
+spriteInput.addEventListener('change', e=>{
+  const f = e.target.files?.[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    spriteImg.src = reader.result;
+    storage.set('sprite', reader.result);
+  };
+  reader.readAsDataURL(f);
+});
+
+/* ---------- SKÓRKI ---------- */
+const defaultSkins = [
+  { id:'domyslny',  name:'Domyślny',  tint:'#ffffff', url:'' },
+  { id:'ognik',     name:'Ognik',     tint:'#ff944d', url:'' },
+  { id:'widmo',     name:'Widmo',     tint:'#6bd7ff', url:'' },
+  { id:'zielen',    name:'Zieleń',    tint:'#6be675', url:'' },
+];
+
+function makeTintedSVG(hex="#ffffff"){
+  // proste „pikselowe” domyślne sprite’y jako SVG (przezroczyste tło)
+  const svg = encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
+    <rect width="256" height="256" fill="none"/>
+    <g transform="translate(128,128)">
+      <g transform="scale(1)">
+        <rect x="-40" y="-40" width="80" height="80" rx="12" ry="12" fill="${hex}" opacity=".95"/>
+        <rect x="-18" y="-10" width="12" height="12" fill="#111a" />
+        <rect x="6" y="-10" width="12" height="12" fill="#111a" />
+        <rect x="-10" y="10" width="20" height="10" fill="#111a" opacity=".9"/>
+      </g>
+    </g>
+  </svg>`);
+  return `data:image/svg+xml;charset=utf-8,${svg}`;
+}
+
+function ensureSkinImages(){
+  for(const s of defaultSkins){
+    if(!s.url) s.url = makeTintedSVG(s.tint);
+  }
+}
+ensureSkinImages();
+
+const skinPicker = $('#skinPicker');
+let currentSkin = storage.get('skin', defaultSkins[0].id);
+
+function renderSkins(){
+  skinPicker.innerHTML = '';
+  defaultSkins.forEach(s=>{
+    const chip = el('label', {className:'chip' + (s.id===currentSkin?' active':'')});
+    chip.append(el('img', {src:s.url, alt:s.name}));
+    chip.append(el('span', {textContent:s.name}));
+    chip.onclick = ()=>{
+      currentSkin = s.id;
+      storage.set('skin', currentSkin);
+      document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+      chip.classList.add('active');
+      $('#skinName').textContent = s.name;
+      if(!spriteImg.src) spriteImg.src = s.url; // jeśli brak własnego uploadu — pokaż skin
+    };
+    skinPicker.append(chip);
+  });
+  const s = defaultSkins.find(x=>x.id===currentSkin) || defaultSkins[0];
+  $('#skinName').textContent = s.name;
+  if(!spriteImg.src){ spriteImg.src = s.url; }
+}
+renderSkins();
+// przywróć wgrany sprite z localStorage (zachowuje przezroczystość)
+const savedSprite = storage.get('sprite','');
+if(savedSprite){ spriteImg.src = savedSprite; }
+
+/* ---------- PYTANIA (CRUD + localStorage) ---------- */
+const DEFAULT_QUESTIONS = [
+  { q:'Ile to 3 × 5?', correct:'15', wrong:['10','8','30'], cat:'Matematyka' },
+  { q:'Stolica Francji to…', correct:'Paryż', wrong:['Lyon','Marsylia','Nicea'], cat:'Geografia' },
+  { q:'Kolor powstający z połączenia niebieskiego i żółtego to…', correct:'Zielony', wrong:['Fioletowy','Pomarańczowy'], cat:'Kolory' },
+];
+
+const keyQ = 'quiz-questions-v1';
+let QUESTIONS = storage.get(keyQ, DEFAULT_QUESTIONS);
+
+function saveQuestions(){ storage.set(keyQ, QUESTIONS); renderList(); syncTotals(); }
+function syncTotals(){ $('#qTotal').textContent = QUESTIONS.length; }
+
+const qList = $('#qList');
+let editIndex = null;
+
+function renderList(){
+  qList.innerHTML = '';
+  QUESTIONS.forEach((item, i)=>{
+    const info = el('div', {className:'row-item'});
+    const left = el('div');
+    left.append(el('div', {textContent:item.q}));
+    left.append(el('div', {className:'muted', textContent:`Poprawna: ${item.correct} ${item.cat? ' • ' + item.cat : ''}`}));
+    const right = el('div', {className:'stack'});
+    const editBtn = el('button', {className:'btn small ghost', textContent:'Edytuj'});
+    const delBtn  = el('button', {className:'btn small bad', textContent:'Usuń'});
+    editBtn.onclick = ()=> {
+      editIndex = i;
+      $('#fQuestion').value = item.q;
+      $('#fCorrect').value  = item.correct;
+      $('#fWrong1').value   = item.wrong[0] ?? '';
+      $('#fWrong2').value   = item.wrong[1] ?? '';
+      $('#fWrong3').value   = item.wrong[2] ?? '';
+      $('#fCategory').value = item.cat ?? '';
+      $('#editHint').textContent = `Edytujesz pytanie #${i+1}`;
+      $('#fQuestion').focus();
+    };
+    delBtn.onclick = ()=>{
+      if(confirm('Usunąć to pytanie?')){
+        QUESTIONS.splice(i,1);
+        saveQuestions();
+      }
+    };
+    info.onclick = (e)=>{ if(e.target===editBtn||e.target===delBtn) return; editBtn.onclick(); };
+    right.append(editBtn, delBtn);
+    info.append(left, right);
+    qList.append(info);
+  });
+}
+renderList(); syncTotals();
+
+$('#addBtn').onclick = ()=>{
+  const q = $('#fQuestion').value.trim();
+  const c = $('#fCorrect').value.trim();
+  const w1= $('#fWrong1').value.trim();
+  const w2= $('#fWrong2').value.trim();
+  const w3= $('#fWrong3').value.trim();
+  const cat=$('#fCategory').value.trim();
+  if(!q || !c){ alert('Wpisz co najmniej pytanie i poprawną odpowiedź.'); return; }
+  const wrong = [w1,w2,w3].filter(Boolean);
+  const obj = { q, correct:c, wrong, cat };
+  if(editIndex!==null){
+    QUESTIONS[editIndex] = obj;
+    editIndex = null;
+    $('#editHint').textContent = '';
+  }else{
+    QUESTIONS.push(obj);
+  }
+  saveQuestions();
+  // wyczyść
+  ['#fQuestion','#fCorrect','#fWrong1','#fWrong2','#fWrong3','#fCategory'].forEach(s=>$(s).value='');
+};
+
+$('#clearForm').onclick = ()=>{
+  editIndex = null; $('#editHint').textContent='';
+  ['#fQuestion','#fCorrect','#fWrong1','#fWrong2','#fWrong3','#fCategory'].forEach(s=>$(s).value='');
+};
+
+/* Import/Export */
+$('#exportBtn').onclick = ()=>{
+  const blob = new Blob([JSON.stringify(QUESTIONS, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pytania-quiz.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+$('#importBtn').onclick = ()=> $('#importFile').click();
+$('#importFile').addEventListener('change', e=>{
+  const f = e.target.files?.[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = ()=>{
+    try{
+      const data = JSON.parse(rd.result);
+      if(!Array.isArray(data)) throw new Error('Zły format');
+      QUESTIONS = data;
+      saveQuestions();
+      showToast('Zaimportowano!', 'Pytania zostały wczytane.', true, false);
+    }catch(err){
+      alert('Nie udało się wczytać JSON :(');
+    }
+  };
+  rd.readAsText(f);
+});
+
+/* ---------- ROZGRYWKA ---------- */
+let state = {
+  i: 0,
+  order: [],
+  score: 0,
+  locked: false
+};
+
+function startGame(){
+  if(!QUESTIONS.length){ alert('Brak pytań. Dodaj coś w edytorze!'); return; }
+  state.order = shuffle([...Array(QUESTIONS.length).keys()]);
+  state.i = 0; state.score = 0; state.locked=false;
+  $('#score').textContent = state.score;
+  $('#nextBtn').disabled = true;
+  $('#qNo').textContent = 1;
+  renderQuestion();
+}
+$('#startBtn').onclick = startGame;
+$('#resetBtn').onclick = startGame;
+
+function renderQuestion(){
+  const idx = state.order[state.i];
+  const item = QUESTIONS[idx];
+  $('#questionText').textContent = item.q;
+  $('#qNo').textContent = state.i+1;
+  const total = QUESTIONS.length;
+  $('#barFill').style.width = ((state.i)/total*100)+'%';
+
+  // odpowiedzi (shuffle)
+  const answers = shuffle([ item.correct, ...item.wrong ]);
+  const box = $('#choicesBox'); box.innerHTML='';
+  answers.forEach(ans=>{
+    const btn = el('button', {className:'btn', textContent: ans});
+    btn.onclick = ()=>{
+      if(state.locked) return;
+      state.locked = true;
+      const ok = ans === item.correct;
+      if(ok){
+        btn.classList.add('good');
+        state.score++; $('#score').textContent = state.score;
+        showToast('Dobra robota! 🎉', 'To była poprawna odpowiedź.', true);
+      }else{
+        btn.classList.add('bad');
+        // podświetl właściwą
+        [...box.children].forEach(b=>{ if(b.textContent===item.correct) b.classList.add('good'); });
+        showToast('Spróbuj ponownie! 🤔', `Poprawna odpowiedź: „${item.correct}”.`, false);
+      }
+      $('#nextBtn').disabled = false;
+    };
+    box.append(btn);
+  });
+}
+
+$('#nextBtn').onclick = ()=>{
+  if(state.i < QUESTIONS.length-1){
+    state.i++; state.locked=false; $('#nextBtn').disabled = true; renderQuestion();
+  }else{
+    endScreen();
+  }
+};
+
+function endScreen(){
+  $('#barFill').style.width = '100%';
+  const total = QUESTIONS.length;
+  const pct = Math.round(state.score/total*100);
+  $('#questionText').innerHTML = `Koniec gry!<br>Wynik: <b>${state.score}</b> / ${total} (${pct}%).`;
+  $('#choicesBox').innerHTML = '';
+  showToast('Koniec! 🏁', `Zdobyłeś(aś) ${state.score}/${total} punktów.`, true, false);
+}
+
+/* ---------- TOAST / REAKCJE ---------- */
+const msg = $('#msg'), toast = $('#toast');
+function showToast(title, desc, good=true, autoNext=true){
+  $('#toastTitle').textContent = title;
+  $('#toastDesc').textContent = desc;
+  toast.classList.toggle('good', good);
+  toast.classList.toggle('bad', !good);
+  msg.classList.add('show');
+  // automatyczne przejście (po poprawnej) po 900 ms — UX
+  if(good && autoNext){
+    setTimeout(()=>{
+      msg.classList.remove('show');
+      $('#toastNext').click();
+    }, 900);
+  }
+}
+$('#toastClose').onclick = ()=> msg.classList.remove('show');
+$('#toastNext').onclick = ()=>{
+  msg.classList.remove('show');
+  if($('#nextBtn').disabled===false) $('#nextBtn').click();
+};
+
+/* ---------- INICJAL START ---------- */
+(function init(){
+  // jeśli jest zapisany skin i brak własnego sprite — pokaż skina
+  const savedSkin = storage.get('skin', defaultSkins[0].id);
+  const found = defaultSkins.find(s=>s.id===savedSkin) || defaultSkins[0];
+  if(!storage.get('sprite','')) spriteImg.src = found.url;
+})();
+</script>
+</body>
+</html>

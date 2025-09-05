@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Mega MiniCraft 2D Ultimate – Naprawiona</title>
+<style>
+body {margin:0; background:#87ceeb; overflow:hidden; font-family:sans-serif;}
+#game {position:relative; width:800px; height:450px; margin:20px auto; overflow:hidden; border:2px solid #333; background:#87ceeb;}
+.block {position:absolute; width:30px; height:30px; box-sizing:border-box; border:none;}
+.grass {background:#2ecc71; border:1px solid #999;}
+.dirt {background:#8e5a2f; border:1px solid #999;}
+.stone {background:#7f8c8d; border:1px solid #999;}
+.sand {background:#f1c40f; border:1px solid #999;}
+.water {background:#3498db; border:1px solid #999;}
+.wood {background:#a0522d; border:1px solid #999;}
+.leaves {background:#27ae60; border:1px solid #999;}
+.plank {background:#deb887; border:1px solid #999;}
+.glass {background:#b0e0e6; border:1px solid #999;}
+.roof {background:#800000; border:1px solid #999;}
+.furnace {background:#555555; border:1px solid #999;}
+.player {width:28px;height:28px;background:#e74c3c;position:absolute;border-radius:4px; z-index:10;}
+.mob {width:28px;height:28px;background:#000;position:absolute;border-radius:50%; z-index:9;}
+.villager {width:28px;height:28px;background:#ffeb3b;position:absolute;border-radius:50%; z-index:9;}
+#toolbar{text-align:center;margin-top:10px;}
+button{padding:5px 10px;margin:5px;font-size:14px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="toolbar">
+Blok: 
+<button onclick="selectedBlock='grass'">Trawa</button>
+<button onclick="selectedBlock='dirt'">Ziemia</button>
+<button onclick="selectedBlock='stone'">Kamień</button>
+<button onclick="selectedBlock='sand'">Piasek</button>
+<button onclick="selectedBlock='water'">Woda</button>
+<button onclick="selectedBlock='wood'">Drewno</button>
+<button onclick="selectedBlock='leaves'">Liście</button>
+<button onclick="selectedBlock='plank'">Deska</button>
+<button onclick="selectedBlock='glass'">Szkło</button>
+<button onclick="selectedBlock='roof'">Dach</button>
+<button onclick="selectedBlock='furnace'">Piec</button>
+<button onclick="selectedBlock='remove'">Usuń</button>
+<p>
+Inventory: <span id="inventory">0</span> | Drewno: <span id="woodCount">0</span> | Kamień: <span id="stoneCount">0</span> | Liście: <span id="leavesCount">0</span> | Piasek: <span id="sandCount">0</span>
+</p>
+<button onclick="craftPlank()">Craft: Drewno → Deska</button>
+<button onclick="craftGlass()">Craft: Piasek → Szkło</button>
+<button onclick="craftRoof()">Craft: Liście → Dach</button>
+<button onclick="craftFurnace()">Craft: Kamień → Piec</button>
+<button onclick="buildHouse()">Buduj Dom 3x3</button>
+</div>
+
+<script>
+const game=document.getElementById('game');
+const screenW=800, screenH=450;
+const blockSize=30;
+const worldCols=60, worldRows=30;
+let world=[], selectedBlock='grass', inventory=0;
+let woodCount=0, stoneCount=0, leavesCount=0, sandCount=0;
+let mobs=[], villagers=[];
+
+// --- Generate world ---
+for(let r=0;r<worldRows;r++){
+    world[r]=[];
+    for(let c=0;c<worldCols;c++){
+        let type='';
+        if(r>15) type='dirt';
+        if(r===15) type='grass';
+        if(r>16 && Math.random()<0.1) type='stone';
+        if(r>15 && r<18 && Math.random()<0.05) type='sand';
+        if(r<15 && Math.random()<0.03) type='water';
+        const block=document.createElement('div');
+        block.className='block';
+        if(type){block.classList.add(type);}
+        block.dataset.row=r;
+        block.dataset.col=c;
+        game.appendChild(block);
+        world[r][c]=block;
+        block.addEventListener('click', placeBlock);
+    }
+}
+
+// --- Trees ---
+for(let c=2;c<worldCols-2;c+=5){
+    let h=Math.floor(Math.random()*3)+2;
+    for(let r=15-h;r<15;r++){
+        world[r][c].className='block wood';
+        if(r===15-h){
+            world[r][c-1].className='block leaves';
+            world[r][c+1].className='block leaves';
+            world[r-1] && world[r-1][c] && (world[r-1][c].className='block leaves');
+        }
+    }
+}
+
+// --- Player ---
+let player={x:400,y:200,w:28,h:28,vy:0,onGround:false};
+const playerDiv=document.createElement('div'); playerDiv.classList.add('player'); game.appendChild(playerDiv);
+
+// --- Camera ---
+let camX=0, camY=0;
+
+// --- Mobs & Villagers ---
+function spawnMob(x,y){const mobDiv=document.createElement('div');mobDiv.classList.add('mob');game.appendChild(mobDiv);mobs.push({x,y,div:mobDiv});}
+for(let i=0;i<5;i++){spawnMob(Math.random()*worldCols*blockSize,200+Math.random()*50);}
+function spawnVillager(x,y){const villDiv=document.createElement('div');villDiv.classList.add('villager');game.appendChild(villDiv);villagers.push({x,y,div:villDiv,buildCooldown:0});}
+for(let i=0;i<3;i++){spawnVillager(Math.random()*worldCols*blockSize,200+Math.random()*50);}
+
+// --- Controls ---
+let keys={};
+document.addEventListener('keydown',e=>keys[e.key]=true);
+document.addEventListener('keyup',e=>keys[e.key]=false);
+
+function placeBlock(e){
+    const r=parseInt(this.dataset.row);
+    const c=parseInt(this.dataset.col);
+    if(selectedBlock==='remove'){
+        if(this.className!=='block'){
+            if(this.className.includes('wood')) woodCount++;
+            if(this.className.includes('stone')) stoneCount++;
+            if(this.className.includes('leaves')) leavesCount++;
+            if(this.className.includes('sand')) sandCount++;
+            this.className='block';
+            inventory++; updateInventory();
+        }
+    }else if(inventory>0){
+        this.className='block '+selectedBlock; inventory--; updateInventory();
+    }
+}
+
+function updateInventory(){
+    document.getElementById('inventory').textContent=inventory;
+    document.getElementById('woodCount').textContent=woodCount;
+    document.getElementById('stoneCount').textContent=stoneCount;
+    document.getElementById('leavesCount').textContent=leavesCount;
+    document.getElementById('sandCount').textContent=sandCount;
+}
+
+// --- Crafting ---
+function craftPlank(){if(woodCount>0){woodCount--; selectedBlock='plank'; updateInventory(); alert('Stworzyłeś deskę!');}else alert('Brak drewna!');}
+function craftGlass(){if(sandCount>0){sandCount--; selectedBlock='glass'; updateInventory(); alert('Stworzyłeś szkło!');}else alert('Brak piasku!');}
+function craftRoof(){if(leavesCount>0){leavesCount--; selectedBlock='roof'; updateInventory(); alert('Stworzyłeś dach!');}else alert('Brak liści!');}
+function craftFurnace(){if(stoneCount>=4){stoneCount-=4; selectedBlock='furnace'; updateInventory(); alert('Stworzyłeś piec!');}else alert('Za mało kamienia!');}
+
+// --- Build house ---
+function buildHouse(){
+    let startCol = Math.floor(player.x/blockSize);
+    let startRow = Math.floor(player.y/blockSize)-3;
+    for(let r=startRow;r<startRow+3;r++){
+        for(let c=startCol;c<startCol+3;c++){
+            if(world[r] && world[r][c]) world[r][c].className='block plank';
+        }
+    }
+    alert('Postawiłeś domek 3x3!');
+}
+
+// --- Camera ---
+function updateCamera(){ camX=player.x-screenW/2; camY=player.y-screenH/2; }
+
+// --- Game loop ---
+function gameLoop(){
+    // gravity
+    player.vy+=1; player.y+=player.vy; player.onGround=false;
+
+    // collisions
+    for(let r=0;r<worldRows;r++){
+        for(let c=0;c<worldCols;c++){
+            const b=world[r][c];
+            if(b.className!=='block'){
+                const bx=c*blockSize, by=r*blockSize;
+                if(player.x+player.w>bx && player.x<bx+blockSize && player.y+player.h>by && player.y<by+blockSize){
+                    if(player.vy>0){player.y=by-player.h; player.vy=0; player.onGround=true;}
+                    else if(player.vy<0){player.y=by+blockSize; player.vy=0;}
+                }
+            }
+        }
+    }
+
+    // movement
+    if(keys['ArrowLeft']) player.x-=5;
+    if(keys['ArrowRight']) player.x+=5;
+    if(keys['ArrowUp'] && player.onGround) player.vy=-15;
+
+    player.x=Math.max(0,Math.min(worldCols*blockSize-player.w,player.x));
+    player.y=Math.min(worldRows*blockSize-player.h,player.y);
+
+    updateCamera();
+
+    // draw blocks
+    for(let r=0;r<worldRows;r++){
+        for(let c=0;c<worldCols;c++){
+            const b=world[r][c];
+            b.style.left=(c*blockSize-camX)+'px';
+            b.style.top=(r*blockSize-camY)+'px';
+        }
+    }
+
+    // draw player
+    playerDiv.style.left=(player.x-camX)+'px';
+    playerDiv.style.top=(player.y-camY)+'px';
+
+    // mobs movement
+    mobs.forEach(m=>{
+        let dx = player.x - m.x;
+        if(Math.abs(dx)>1) m.x += dx>0?1:-1;
+        m.div.style.left=(m.x-camX)+'px';
+        m.div.style.top=(m.y-camY)+'px';
+    });
+
+    // villagers building
+    villagers.forEach(v=>{
+        v.buildCooldown--;
+        if(v.buildCooldown<=0){
+            let col=Math.floor(v.x/blockSize);
+            let row=Math.floor(v.y/blockSize)-3;
+            for(let r=row;r<row+3;r++){
+                for(let c=col;c<col+3;c++){
+                    if(world[r] && world[r][c]) world[r][c].className='block plank';
+                }
+            }
+            v.buildCooldown=300 + Math.floor(Math.random()*300);
+        }
+        v.x += (Math.random()-0.5)*2;
+        v.div.style.left=(v.x-camX)+'px';
+        v.div.style.top=(v.y-camY)+'px';
+    });
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>

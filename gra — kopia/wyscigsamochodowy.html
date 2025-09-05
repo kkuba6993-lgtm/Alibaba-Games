@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Wyścig Samochodowy</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Arial; }
+    canvas { background: linear-gradient(#444, #111); display: block; margin: 0 auto; }
+    #scoreDisplay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-size: 20px;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+<div id="scoreDisplay">Wynik: 0</div>
+<canvas id="canvas" width="400" height="600"></canvas>
+<audio id="music" autoplay loop>
+  <source src="https://www.bensound.com/bensound-music/bensound-ukulele.mp3" type="audio/mp3">
+  Twoja przeglądarka nie obsługuje dźwięku.
+</audio>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const scoreDisplay = document.getElementById("scoreDisplay");
+const music = document.getElementById("music");
+
+let player = { x: 175, y: 500, width: 50, height: 100, color: "deepskyblue" };
+let enemies = [];
+let coins = [];
+let score = 0;
+let gameRunning = true;
+
+function drawRect(obj) {
+  ctx.fillStyle = obj.color;
+  ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+}
+
+function drawCircle(obj) {
+  ctx.beginPath();
+  ctx.arc(obj.x, obj.y, obj.radius, 0, 2 * Math.PI);
+  ctx.fillStyle = obj.color;
+  ctx.fill();
+}
+
+function spawnEnemy() {
+  const x = Math.random() * (canvas.width - 50);
+  enemies.push({ x: x, y: -100, width: 50, height: 100, color: "crimson", speed: 4 });
+}
+
+function spawnCoin() {
+  const x = Math.random() * (canvas.width - 20) + 10;
+  coins.push({ x: x, y: -20, radius: 10, color: "gold", speed: 3 });
+}
+
+function update() {
+  if (!gameRunning) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Rysuj gracza
+  drawRect(player);
+
+  // Rysuj i aktualizuj wrogów
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    e.y += e.speed;
+    drawRect(e);
+
+    // Kolizja z graczem
+    if (
+      player.x < e.x + e.width &&
+      player.x + player.width > e.x &&
+      player.y < e.y + e.height &&
+      player.y + player.height > e.y
+    ) {
+      gameRunning = false;
+      music.pause();
+      alert("💥 KONIEC GRY! Twój wynik: " + score);
+      location.reload();
+    }
+
+    if (e.y > canvas.height) enemies.splice(i, 1);
+  }
+
+  // Rysuj i aktualizuj monety
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    c.y += c.speed;
+    drawCircle(c);
+
+    const dx = player.x + player.width / 2 - c.x;
+    const dy = player.y + player.height / 2 - c.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < c.radius + 25) {
+      score += 5;
+      coins.splice(i, 1);
+    }
+
+    if (c.y > canvas.height) coins.splice(i, 1);
+  }
+
+  scoreDisplay.innerText = "Wynik: " + score;
+  requestAnimationFrame(update);
+}
+
+// Sterowanie
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft" && player.x > 0) player.x -= 10;
+  if (e.key === "ArrowRight" && player.x + player.width < canvas.width) player.x += 10;
+});
+
+// Spawnowanie
+setInterval(spawnEnemy, 1500);
+setInterval(spawnCoin, 2000);
+
+update();
+</script>
+</body>
+</html>

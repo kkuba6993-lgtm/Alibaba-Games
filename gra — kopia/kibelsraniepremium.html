@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Sranie na Kiblu – Wersja Premium</title>
+    <style>
+        body {
+            font-family: 'Comic Sans MS', sans-serif;
+            text-align: center;
+            background-color: #fefbe9;
+            color: #333;
+        }
+        h1 {
+            margin-top: 30px;
+            color: #d35400;
+        }
+        #gra {
+            margin-top: 50px;
+        }
+        button {
+            padding: 12px 25px;
+            margin: 15px;
+            font-size: 18px;
+            cursor: pointer;
+            border: none;
+            border-radius: 10px;
+            background-color: #f39c12;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #e67e22;
+        }
+        #punkty {
+            font-weight: bold;
+            font-size: 20px;
+        }
+        #komunikat {
+            margin-top: 20px;
+            font-size: 18px;
+            min-height: 40px;
+        }
+        #timer {
+            font-size: 22px;
+            margin-top: 20px;
+            color: #c0392b;
+        }
+        #restart {
+            display: none;
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #27ae60;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sranie na Kiblu – Wersja Premium</h1>
+    <div id="gra">
+        <p>Twoim celem jest zdobyć jak najwięcej punktów, zanim timer dobiegnie końca!</p>
+        <button onclick="akcja(1)">Siedź spokojnie</button>
+        <button onclick="akcja(2)">Czytaj gazetę</button>
+        <button onclick="akcja(3)">Scrolluj memy</button>
+        <p>Punkty: <span id="punkty">0</span></p>
+        <p id="timer">Czas: 60s</p>
+        <p id="komunikat"></p>
+        <button id="restart" onclick="restart()">Restart</button>
+    </div>
+
+    <script>
+        let punkty = 0;
+        let czas = 60;
+        let graTrwa = true;
+
+        function akcja(wybor) {
+            if (!graTrwa) return;
+
+            let komunikat = "";
+            let los = Math.random();
+
+            if (wybor === 1) {
+                if (los < 0.6) {
+                    komunikat = "Brawo! Perfekcyjna kontrola sytuacji. +2 punkty";
+                    punkty += 2;
+                } else {
+                    komunikat = "Potrzebujesz więcej czasu... +1 punkt cierpliwości";
+                    punkty += 1;
+                }
+            } else if (wybor === 2) {
+                komunikat = "Czytasz gazetę... czas mija. +1 punkt";
+                punkty += 1;
+            } else if (wybor === 3) {
+                komunikat = "Scrollujesz memy i śmiejesz się... +1 punkt zabawy";
+                punkty += 1;
+            }
+
+            // Losowe wydarzenia
+            if (los > 0.95) {
+                komunikat += " 😱 Nagle papier się kończy! -2 punkty";
+                punkty = Math.max(0, punkty - 2);
+            }
+
+            document.getElementById("punkty").textContent = punkty;
+            document.getElementById("komunikat").textContent = komunikat;
+        }
+
+        function odliczanie() {
+            if (!graTrwa) return;
+            czas--;
+            document.getElementById("timer").textContent = "Czas: " + czas + "s";
+            if (czas <= 0) {
+                koniecGry();
+            } else {
+                setTimeout(odliczanie, 1000);
+            }
+        }
+
+        function koniecGry() {
+            graTrwa = false;
+            document.getElementById("komunikat").textContent = "⏰ Czas minął! Twój wynik: " + punkty + " punktów";
+            document.getElementById("restart").style.display = "inline-block";
+        }
+
+        function restart() {
+            punkty = 0;
+            czas = 60;
+            graTrwa = true;
+            document.getElementById("punkty").textContent = punkty;
+            document.getElementById("komunikat").textContent = "";
+            document.getElementById("restart").style.display = "none";
+            document.getElementById("timer").textContent = "Czas: " + czas + "s";
+            odliczanie();
+        }
+
+        odliczanie();
+    </script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Klikacz 😎 – Power Click + Błyski</title>
+<style>
+body {font-family:sans-serif; text-align:center; background:#f0f0f0; margin:0; padding:0;}
+#container {margin-top:50px;}
+button {font-size:50px; padding:20px 40px; cursor:pointer; position:relative;}
+#score, #prestige {font-size:24px; margin:15px;}
+#upgrades {margin-top:30px;}
+.upgradeBtn {margin:5px; padding:10px 20px; font-size:16px; cursor:pointer;}
+#musicBtn, #activatePower {margin-top:20px; padding:10px 20px; font-size:16px;}
+.floating {position:absolute; font-size:30px; pointer-events:none; animation:floatUp 1s ease-out forwards;}
+@keyframes floatUp {0% {opacity:1; transform:translateY(0);} 100% {opacity:0; transform:translateY(-50px);}}
+
+#powerBarContainer {
+    width: 300px;
+    height: 25px;
+    background: #333;
+    margin: 20px auto;
+    border-radius: 10px;
+    overflow: hidden;
+}
+#powerBar {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, red, orange, yellow, green, blue, indigo, violet);
+    background-size: 200% 100%;
+    animation: rainbow 3s linear infinite;
+}
+@keyframes rainbow {
+    0% {background-position:0 0;}
+    100% {background-position:200% 0;}
+}
+</style>
+</head>
+<body>
+<div id="container">
+    <div id="score">😎: 0</div>
+    <div id="prestige">Prestige: 0</div>
+    <button id="clickBtn">😎</button>
+    <div id="upgrades">
+        <button id="upgradeClick" class="upgradeBtn" onclick="buyUpgrade(1)">+1 punkt/klik (50 😎)</button>
+        <button id="upgradeAuto" class="upgradeBtn" onclick="buyUpgrade(2)">+1 punkt/s (200 😎)</button>
+    </div>
+    <button id="rebirthBtn" onclick="rebirth()">Odrodź się (100 000 😎)</button>
+    <br>
+    <div id="powerBarContainer"><div id="powerBar"></div></div>
+    <button id="activatePower" onclick="activatePower()" disabled>Aktywuj Power Click</button>
+    <br>
+    <button id="musicBtn" onclick="toggleMusic()">Włącz/Wyłącz muzykę</button>
+</div>
+
+<!-- Muzyka w tle -->
+<audio id="bgMusic" loop>
+    <source src="https://www.bensound.com/bensound-music/bensound-energy.mp3" type="audio/mpeg">
+</audio>
+
+<!-- Dźwięk monet -->
+<audio id="coinSound">
+    <source src="https://freesound.org/data/previews/341/341695_6247410-lq.mp3" type="audio/mpeg">
+</audio>
+
+<!-- Muzyka Power Click (pobierz z YouTube, np. jako power_click_intro.mp3) -->
+<audio id="powerMusic">
+    <source src="power_click_intro.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+// --- zmienne ---
+let score = parseInt(localStorage.getItem('score')) || 0;
+let pointsPerClick = parseInt(localStorage.getItem('ppc')) || 1;
+let pointsPerSecond = parseInt(localStorage.getItem('pps')) || 0;
+let prestige = parseInt(localStorage.getItem('prestige')) || 0;
+const rebirthThreshold = 100000;
+
+// --- ceny startowe ---
+let clickUpgradePrice = parseFloat(localStorage.getItem('clickPrice')) || 50;
+let autoUpgradePrice = parseFloat(localStorage.getItem('autoPrice')) || 200;
+
+// --- Power Click ---
+let powerBarValue = parseFloat(localStorage.getItem('powerBar')) || 0;
+let powerActive = false;
+let powerMultiplier = 2;
+
+// --- dźwięki ---
+const coinSound = document.getElementById('coinSound');
+const bgMusic = document.getElementById('bgMusic');
+const powerMusic = document.getElementById('powerMusic');
+
+// --- update wyświetlania ---
+function updateScore(){
+    document.getElementById('score').textContent = `😎: ${score}`;
+    document.getElementById('prestige').textContent = `Prestige: ${prestige}`;
+    document.getElementById('upgradeClick').textContent = `+1 punkt/klik (${Math.ceil(clickUpgradePrice)} 😎)`;
+    document.getElementById('upgradeAuto').textContent = `+1 punkt/s (${Math.ceil(autoUpgradePrice)} 😎)`;
+    document.getElementById('powerBar').style.width = powerBarValue + '%';
+    document.getElementById('activatePower').disabled = powerBarValue < 100;
+}
+
+// --- animacja kliknięcia ---
+function showClickAnimation(x,y){
+    const floatDiv = document.createElement('div');
+    floatDiv.className = 'floating';
+    floatDiv.textContent = '😎';
+    floatDiv.style.left = x + 'px';
+    floatDiv.style.top = y + 'px';
+    document.body.appendChild(floatDiv);
+    setTimeout(()=>{document.body.removeChild(floatDiv);},1000);
+}
+
+// --- kliknięcie ---
+document.getElementById('clickBtn').addEventListener('click', (e)=>{
+    let multiplier = powerActive ? powerMultiplier : 1;
+    score += pointsPerClick * (1 + prestige*0.1) * multiplier;
+
+    if(!powerActive){
+        powerBarValue += 10;
+        if(powerBarValue > 100) powerBarValue = 100;
+    }
+
+    saveGame();
+    updateScore();
+    const rect = e.target.getBoundingClientRect();
+    showClickAnimation(rect.left + rect.width/2 - 15, rect.top - 20);
+});
+
+// --- ulepszenia ---
+function buyUpgrade(type){
+    if(type===1 && score>=clickUpgradePrice){
+        score -= clickUpgradePrice;
+        pointsPerClick += 1;
+        clickUpgradePrice *= 1.5;
+        coinSound.currentTime = 0; coinSound.play();
+    } else if(type===2 && score>=autoUpgradePrice){
+        score -= autoUpgradePrice;
+        pointsPerSecond += 1;
+        autoUpgradePrice *= 1.5;
+        coinSound.currentTime = 0; coinSound.play();
+    } else {
+        alert('Nie masz wystarczająco 😎!');
+    }
+    saveGame();
+    updateScore();
+}
+
+// --- automatyczne punkty ---
+setInterval(()=>{
+    let multiplier = powerActive ? powerMultiplier : 1;
+    score += pointsPerSecond * (1 + prestige*0.1) * multiplier;
+    saveGame();
+    updateScore();
+},1000);
+
+// --- aktywacja Power Click z błyskami ---
+function activatePower(){
+    if(powerBarValue >= 100 && !powerActive){
+        powerActive = true;
+        powerBarValue = 0;
+        updateScore();
+
+        // Muzyka Power Click
+        bgMusic.pause();
+        powerMusic.currentTime = 0;
+        powerMusic.play();
+
+        // Błyski kolorów
+        let flashes = [];
+        let flashInterval = setInterval(()=>{
+            for(let i=0;i<3;i++){
+                const flash = document.createElement('div');
+                flash.style.position = 'absolute';
+                flash.style.width = '20px';
+                flash.style.height = '20px';
+                flash.style.borderRadius = '50%';
+                flash.style.backgroundColor = `hsl(${Math.random()*360}, 100%, 50%)`;
+                flash.style.left = (window.innerWidth/2 + (Math.random()*100-50))+'px';
+                flash.style.top = (window.innerHeight/2 + (Math.random()*100-50))+'px';
+                flash.style.opacity = 0.7;
+                flash.style.pointerEvents = 'none';
+                document.body.appendChild(flash);
+
+                flashes.push(flash);
+                setTimeout(()=>{flash.remove();}, 500);
+            }
+        }, 200);
+
+        setTimeout(()=>{
+            powerActive = false;
+            updateScore();
+            powerMusic.pause();
+            bgMusic.play();
+            clearInterval(flashInterval);
+        }, 10000); // 10 sekund bonusu
+    }
+}
+
+// --- odrodzenie ---
+function rebirth(){
+    if(score >= rebirthThreshold){
+        score = 0;
+        pointsPerClick = 1;
+        pointsPerSecond = 0;
+        prestige += 1;
+        clickUpgradePrice = 50;
+        autoUpgradePrice = 200;
+        powerBarValue = 0;
+        powerActive = false;
+        saveGame();
+        updateScore();
+        alert('Odrodziłeś się! Prestige +1 😎');
+    } else {
+        alert(`Musisz mieć co najmniej ${rebirthThreshold} 😎 aby się odrodzić!`);
+    }
+}
+
+// --- zapisywanie ---
+function saveGame(){
+    localStorage.setItem('score', score);
+    localStorage.setItem('ppc', pointsPerClick);
+    localStorage.setItem('pps', pointsPerSecond);
+    localStorage.setItem('prestige', prestige);
+    localStorage.setItem('clickPrice', clickUpgradePrice);
+    localStorage.setItem('autoPrice', autoUpgradePrice);
+    localStorage.setItem('powerBar', powerBarValue);
+}
+
+// --- muzyka ---
+function toggleMusic(){
+    if(bgMusic.paused) bgMusic.play();
+    else bgMusic.pause();
+}
+
+// --- start ---
+updateScore();
+</script>
+</body>
+</html>

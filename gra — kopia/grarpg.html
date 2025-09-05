@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>RPG 2D - Pełna wersja z wszystkim!</title>
+  <style>
+    body { margin:0; background:#222; color:#fff; font-family:sans-serif; overflow:hidden; }
+    canvas { display:block; background:#000; }
+    .panel { position:fixed; top:10px; right:10px; background:#111a; padding:10px; border-radius:10px; max-width:300px; font-size:14px; }
+    .row { display:flex; gap:5px; margin:5px 0; }
+    button { background:#444; color:#fff; border:none; padding:5px 10px; border-radius:5px; cursor:pointer; }
+    button:hover { background:#666; }
+    input { padding:5px; background:#222; color:#fff; border:1px solid #555; border-radius:5px; }
+    #minimap { position:fixed; bottom:10px; left:10px; border:2px solid #fff; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <canvas id="minimap" width="150" height="150"></canvas>
+  <div class="panel">
+    <h3>Panel</h3>
+    <div class="row"><button id="makeProcedural">Proceduralny tileset</button></div>
+    <button id="applyTiles">Zastosuj mapowanie</button>
+    <div><button id="shopBtn">Sklep</button><button id="magicBtn">Zaklęcia</button></div>
+  </div>
+  <div id="shop" style="display:none; position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#333;padding:20px;border-radius:10px;">
+    <h3>Sklep</h3>
+    <p>Miecz - 10 zł</p>
+    <p>Zbroja - 15 zł</p>
+    <p>Mikstura - 5 zł</p>
+    <button onclick="closeShop()">Zamknij</button>
+  </div>
+  <div id="magic" style="display:none; position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#333;padding:20px;border-radius:10px;">
+    <h3>Zaklęcia</h3>
+    <p>Kula ognia</p>
+    <p>Leczenie</p>
+    <p>Tarcza</p>
+    <button onclick="closeMagic()">Zamknij</button>
+  </div>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    let W = window.innerWidth, H = window.innerHeight; canvas.width = W; canvas.height = H;
+    const TILE = 32;
+    const MAP_WIDTH = 50, MAP_HEIGHT = 50;
+    const TILEMAP_INDEX = {grass:0, water:1, sand:2, rock:3, tree:4, bridge:5, town:6, cave:7, falls:8, road:9};
+
+    let map = Array.from({length:MAP_HEIGHT},()=>Array.from({length:MAP_WIDTH},()=>Math.random()<0.1?TILEMAP_INDEX.water:TILEMAP_INDEX.grass));
+
+    function addStructures(){
+      map[10][10]=TILEMAP_INDEX.town;
+      map[40][30]=TILEMAP_INDEX.cave;
+      map[20][25]=TILEMAP_INDEX.falls;
+      map[15][15]=TILEMAP_INDEX.bridge;
+      for(let i=0;i<200;i++){let x=Math.floor(Math.random()*MAP_WIDTH),y=Math.floor(Math.random()*MAP_HEIGHT);map[y][x]=TILEMAP_INDEX.tree;}
+    }
+    addStructures();
+
+    const player = {x:5,y:5,hp:10,gold:20};
+    const enemies = [{x:12,y:12,hp:3},{x:30,y:25,hp:5}];
+    let assets={tilesheet:null,ready:false};
+
+    function buildProceduralTileset(){
+      const ts=TILE,cols=4,rows=4,off=document.createElement('canvas');
+      off.width=ts*cols;off.height=ts*rows;const g=off.getContext('2d');g.imageSmoothingEnabled=false;
+      const cell=i=>({x:(i%cols)*ts,y:((i/cols)|0)*ts});
+      [{c:'#1f5f44',spots:'#2a8a64'},{c:'#0a1f3d',c2:'#0e5a9c'},{c:'#b08947',spots:'#d9b066'},{c:'#3b4358'},
+      {c:'#173b2d',tree:true},{c:'#5b422a',bridge:true},{c:'#2a2f49',town:true},{c:'#0b0d12',cave:true},
+      {c:'#0e5a9c',falls:true},{c:'#3c3a33',road:true}].forEach((tile,i)=>{
+        const {x,y}=cell(i);g.fillStyle=tile.c;g.fillRect(x,y,ts,ts);
+        if(tile.spots)for(let j=0;j<30;j++)g.fillRect(x+(Math.random()*ts|0),y+(Math.random()*ts|0),1,1);
+        if(tile.tree){g.fillStyle='#1d8a59';g.beginPath();g.arc(x+16,y+14,12,0,6.28);g.fill();g.fillStyle='#614b2a';g.fillRect(x+14,y+18,4,12);}
+        if(tile.bridge){g.fillStyle='#745632';g.fillRect(x,y+14,ts,4);}
+        if(tile.town){g.fillStyle='#44518a';g.fillRect(x+4,y+8,ts-8,ts-8);}
+        if(tile.cave){g.fillStyle='#5e5b76';g.beginPath();g.arc(x+16,y+18,9,Math.PI,0);g.fill();}
+        if(tile.falls){g.globalAlpha=.8;g.fillStyle='#b4e1ff';for(let i=0;i<8;i++)g.fillRect(x+(i*4),y,2,ts);g.globalAlpha=1;}
+        if(tile.road){g.fillStyle='#565147';g.fillRect(x+2,y+10,ts-4,12);}
+      });
+      const img=new Image();img.onload=()=>{assets.tilesheet=img;assets.ready=true;drawMap();};img.src=off.toDataURL('image/png');
+    }
+
+    function drawTile(idx,dx,dy){
+      const cols=4;const sx=(idx%cols)*TILE;const sy=((idx/cols)|0)*TILE;
+      ctx.drawImage(assets.tilesheet,sx,sy,TILE,TILE,dx,dy,TILE,TILE);
+    }
+
+    function drawMap(){
+      if(!assets.ready)return;ctx.clearRect(0,0,W,H);
+      const startX=Math.floor(player.x-W/TILE/2),startY=Math.floor(player.y-H/TILE/2);
+      for(let y=0;y<Math.ceil(H/TILE)+1;y++){
+        for(let x=0;x<Math.ceil(W/TILE)+1;x++){
+          const mx=startX+x,my=startY+y;if(mx>=0&&my>=0&&mx<MAP_WIDTH&&my<MAP_HEIGHT)drawTile(map[my][mx],x*TILE,y*TILE);
+        }
+      }
+      ctx.fillStyle='red';ctx.fillRect(W/2-12,H/2-12,24,24);
+      ctx.fillStyle='purple';
+      enemies.forEach(e=>{const sx=(e.x-startX)*TILE+TILE/4,sy=(e.y-startY)*TILE+TILE/4;ctx.fillRect(sx,sy,16,16);});
+      drawMinimap();
+    }
+
+    function drawMinimap(){
+      const mm=document.getElementById('minimap'),mctx=mm.getContext('2d');mctx.clearRect(0,0,150,150);
+      const scaleX=150/MAP_WIDTH,scaleY=150/MAP_HEIGHT;
+      for(let y=0;y<MAP_HEIGHT;y++)for(let x=0;x<MAP_WIDTH;x++){
+        if(map[y][x]===TILEMAP_INDEX.water)mctx.fillStyle='#00f';else if(map[y][x]===TILEMAP_INDEX.tree)mctx.fillStyle='#0f0';else mctx.fillStyle='#999';
+        mctx.fillRect(x*scaleX,y*scaleY,scaleX,scaleY);
+      }
+      mctx.fillStyle='red';mctx.fillRect(player.x*scaleX,player.y*scaleY,3,3);
+    }
+
+    function openShop(){document.getElementById('shop').style.display='block';}
+    function closeShop(){document.getElementById('shop').style.display='none';}
+    function openMagic(){document.getElementById('magic').style.display='block';}
+    function closeMagic(){document.getElementById('magic').style.display='none';}
+
+    document.getElementById('makeProcedural').onclick=()=>buildProceduralTileset();
+    document.getElementById('applyTiles').onclick=drawMap;
+    document.getElementById('shopBtn').onclick=openShop;
+    document.getElementById('magicBtn').onclick=openMagic;
+    window.addEventListener('resize',()=>{W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;drawMap();});
+    window.addEventListener('keydown',e=>{if(e.key==='ArrowUp')player.y--;if(e.key==='ArrowDown')player.y++;if(e.key==='ArrowLeft')player.x--;if(e.key==='ArrowRight')player.x++;drawMap();});
+
+    buildProceduralTileset();
+  </script>
+</body>
+</html>

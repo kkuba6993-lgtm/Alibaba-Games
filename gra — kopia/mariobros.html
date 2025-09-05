@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini Mario — Prosta gra HTML</title>
+  <style>
+    :root{--bg:#87ceeb;--ground:#5c3b1e;--grass:#6cc24a;--plat:#8ecae6;--player:#e63946;--coin:#ffd166;--enemy:#264653;--flag:#ff006e;--text:#0b132b}
+    html,body{margin:0;height:100%;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
+    .wrap{display:grid;place-items:center;height:100%;}
+    canvas{background:linear-gradient(#b3e5ff, var(--bg));box-shadow:0 10px 30px rgba(0,0,0,.2);border-radius:16px}
+    .hud{position:fixed;inset:16px auto auto 50%;transform:translateX(-50%);display:flex;gap:16px;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.7);backdrop-filter:blur(8px);align-items:center}
+    .hud b{color:var(--text)}
+    .controls{position:fixed;left:16px;bottom:16px;background:rgba(255,255,255,.7);backdrop-filter:blur(8px);border-radius:12px;padding:8px;display:none;gap:8px}
+    .btn{border:0;border-radius:10px;padding:10px 12px;min-width:44px;min-height:44px;font-weight:700;background:white;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+    .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;padding:10px 14px;border-radius:999px;font-weight:600;}
+    @media (max-width: 900px){.controls{display:flex}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="960" height="540" aria-label="Mini Mario platformówka"></canvas>
+  </div>
+  <div class="hud" role="status" aria-live="polite">
+    <div><b>Monety:</b> <span id="coins">0</span>/<span id="coinsTotal">0</span></div>
+    <div><b>Czas:</b> <span id="time">0.0s</span></div>
+    <div><b>Życia:</b> <span id="lives">3</span></div>
+  </div>
+  <div class="controls" aria-label="Sterowanie dotykowe">
+    <button class="btn" data-left>◀︎</button>
+    <button class="btn" data-right>▶︎</button>
+    <button class="btn" data-jump>⤒</button>
+  </div>
+  <div id="toast" class="toast" style="display:none"></div>
+
+  <script>
+    // --- Ustawienia gry ---
+    const W = 960, H = 540;
+    const GRAVITY = 1800; // px/s^2
+    const MOVE_SPEED = 300; // px/s
+    const JUMP_VELOCITY = 680; // px/s
+    const MAX_LIVES = 3;
+
+    /** @type {HTMLCanvasElement} */
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const uiCoins = document.getElementById('coins');
+    const uiCoinsTotal = document.getElementById('coinsTotal');
+    const uiTime = document.getElementById('time');
+    const uiLives = document.getElementById('lives');
+    const toast = document.getElementById('toast');
+
+    // Pomocnicze
+    const rectsIntersect = (a,b)=>!(a.x+a.w<=b.x||a.x>=b.x+b.w||a.y+a.h<=b.y||a.y>=b.y+b.h);
+
+    // Poziom (prosty układ platform)
+    const level = {
+      ground: {x:0,y:H-60,w:W,h:60},
+      platforms: [
+        {x:120,y:420,w:180,h:20},
+        {x:380,y:360,w:140,h:20},
+        {x:590,y:300,w:160,h:20},
+        {x:810,y:250,w:110,h:20},
+      ],
+      coins: [
+        {x:160,y:380,w:18,h:18,collected:false},
+        {x:420,y:320,w:18,h:18,collected:false},
+        {x:640,y:260,w:18,h:18,collected:false},
+        {x:840,y:210,w:18,h:18,collected:false},
+      ],
+      enemies: [
+        {x:300,y:H-90,w:34,h:30,dir:-1,speed:60,minX:260,maxX:460,alive:true},
+        {x:630,y:270,w:34,h:30,dir:1,speed:70,minX:590,maxX:750,alive:true},
+      ],
+      flag: {x:900,y:H-160,w:16,h:100}
+    };
+    uiCoinsTotal.textContent = level.coins.length;
+
+    const player = {x:40,y:H-120,w:28,h:36,vx:0,vy:0,onGround:false, facing:1, lives:MAX_LIVES, invul:0};
+
+    // Sterowanie
+    const keys = {left:false,right:false,jump:false};
+    function showToast(msg,ms=1200){
+      toast.textContent = msg; toast.style.display='block';
+      clearTimeout(showToast._t); showToast._t=setTimeout(()=>toast.style.display='none',ms);
+    }
+
+    const keyMap = {ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',Space:'jump',KeyW:'jump',ArrowUp:'jump'};
+    addEventListener('keydown',e=>{const k=keyMap[e.code]; if(k){ if(k==='jump') keys[k]=true; else keys[k]=true; }});
+    addEventListener('keyup',e=>{const k=keyMap[e.code]; if(k){ if(k==='jump') keys[k]=false; else keys[k]=false; }});
+
+    // Dotyk
+    const btnL = document.querySelector('[data-left]');
+    const btnR = document.querySelector('[data-right]');
+    const btnJ = document.querySelector('[data-jump]');
+    const btnOn=(el, set)=>{
+      const on=()=>set(true), off=()=>set(false);
+      el.addEventListener('pointerdown',on); el.addEventListener('pointerup',off); el.addEventListener('pointerout',off); el.addEventListener('pointercancel',off);
+    };
+    btnOn(btnL, v=>keys.left=v); btnOn(btnR, v=>keys.right=v); btnOn(btnJ, v=>{ if(v && player.onGround) jump(); if(!v) keys.jump=false; });
+
+    // Kolizje z podłożem/platformami (AABB + separacja osiowa)
+    function resolveCollisions(rect){
+      const solids = [level.ground, ...level.platforms];
+      rect.onGround = false;
+      for(const s of solids){
+        if(!rectsIntersect(rect,s)) continue;
+        const overlapX1 = rect.x + rect.w - s.x;
+        const overlapX2 = s.x + s.w - rect.x;
+        const overlapY1 = rect.y + rect.h - s.y;
+        const overlapY2 = s.y + s.h - rect.y;
+        const minX = Math.min(overlapX1, overlapX2);
+        const minY = Math.min(overlapY1, overlapY2);
+        if(minX < minY){
+          // Odepchnij w poziomie
+          if(overlapX1 < overlapX2){ rect.x -= overlapX1; } else { rect.x += overlapX2; }
+          rect.vx = 0;
+        } else {
+          // Odepchnij w pionie
+          if(overlapY1 < overlapY2){ // z góry na platformę
+            rect.y -= overlapY1; rect.vy = 0; rect.onGround = true;
+          } else { // uderzenie od dołu
+            rect.y += overlapY2; rect.vy = 0;
+          }
+        }
+      }
+    }
+
+    function jump(){
+      if(player.onGround){ player.vy = -JUMP_VELOCITY; player.onGround=false; }
+    }
+
+    // Pętla gry
+    let last = performance.now();
+    let elapsed = 0; // czas w sekundach
+    function loop(now){
+      const dt = Math.min(1/30, (now-last)/1000); // clamp dla stabilności
+      last = now; elapsed += dt; uiTime.textContent = `${elapsed.toFixed(1)}s`;
+
+      // Ruch gracza
+      player.vx = (keys.right?1:0 - (keys.left?1:0)) * MOVE_SPEED;
+      if(keys.jump) { jump(); keys.jump=false; }
+      player.vy += GRAVITY * dt;
+      player.x += player.vx * dt;
+      resolveCollisions(player);
+      player.y += player.vy * dt;
+      resolveCollisions(player);
+      if(player.vx!==0) player.facing = Math.sign(player.vx);
+
+      // Upadek poza mapę
+      if(player.y > H){ loseLife(); }
+
+      // Monety
+      for(const c of level.coins){
+        if(!c.collected && rectsIntersect(player,c)){
+          c.collected = true; coinsCollected++; uiCoins.textContent = coinsCollected; showToast('+1 moneta');
+        }
+      }
+
+      // Wrogowie
+      for(const e of level.enemies){
+        if(!e.alive) continue;
+        e.x += e.dir * e.speed * dt;
+        if(e.x < e.minX){ e.x=e.minX; e.dir=1; }
+        if(e.x+e.w > e.maxX){ e.x=e.maxX-e.w; e.dir=-1; }
+        // Grawitacja/kolizja z platformami
+        e.vy = (e.vy||0) + GRAVITY*dt; e.y += e.vy*dt; resolveCollisions(e);
+        // Kontakt z graczem: skok w głowę zabija, inaczej gracz traci życie
+        if(rectsIntersect(player,e)){
+          if(player.vy>100){ // spada od góry
+            e.alive=false; player.vy = -JUMP_VELOCITY*0.7; showToast('Pokonano wroga!');
+          } else if(player.invul<=0){
+            hitPlayer();
+          }
+        }
+      }
+
+      // Meta/Flaga — wygraj jeśli wszystkie monety
+      if(coinsCollected===level.coins.length && rectsIntersect(player, level.flag)){
+        win();
+      }
+
+      // Rysowanie
+      draw();
+
+      // Timery
+      if(player.invul>0) player.invul -= dt;
+
+      requestAnimationFrame(loop);
+    }
+
+    function resetPlayer(){
+      player.x=40; player.y=H-120; player.vx=player.vy=0; player.onGround=false; player.invul=1.0;
+    }
+    function loseLife(){
+      player.lives--; uiLives.textContent = player.lives; showToast('Ups! Tracisz życie');
+      if(player.lives<=0){ restartLevel(true); } else { resetPlayer(); }
+    }
+    function hitPlayer(){
+      player.invul=1.2; loseLife();
+    }
+    function restartLevel(full=false){
+      if(full){
+        // pełny restart
+        level.coins.forEach(c=>c.collected=false); coinsCollected=0; uiCoins.textContent=0;
+        level.enemies.forEach(e=>{e.alive=true; e.y=H-90;});
+        player.lives = MAX_LIVES; uiLives.textContent = MAX_LIVES; elapsed=0;
+        showToast('Restart poziomu');
+      }
+      resetPlayer();
+    }
+    function win(){
+      showToast('Wygrana! 🎉');
+      // Prosty następny poziom: przesunięcie flagi i dodanie platformy
+      level.platforms.push({x:720,y:200,w:120,h:20});
+      level.flag.x = 900; level.flag.y = H-200;
+      // Dodaj nowego wroga po wygranej, by kontynuować zabawę
+      level.enemies.push({x:500,y:H-90,w:34,h:30,dir:-1,speed:90,minX:480,maxX:760,alive:true});
+      // Odzyskaj jedno życie
+      if(player.lives<MAX_LIVES){ player.lives++; uiLives.textContent = player.lives; }
+      // Przesuń gracza na start
+      resetPlayer();
+    }
+
+    function draw(){
+      // Tło (warstwowe)
+      ctx.clearRect(0,0,W,H);
+      // Chmurki
+      ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffffff';
+      for(let i=0;i<3;i++){
+        const x = (Math.sin((elapsed*0.1 + i)*1.2)+1)/2*(W-200)+50;
+        ctx.beginPath(); ctx.ellipse(x,120+20*i,60,30,0,0,Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Ziemia
+      const g = level.ground; ctx.fillStyle= 'linear-gradient';
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ground');
+      ctx.fillRect(g.x,g.y,g.w,g.h);
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--grass');
+      ctx.fillRect(g.x,g.y-8,g.w,12);
+
+      // Platformy
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--plat');
+      for(const p of level.platforms){ ctx.fillRect(p.x,p.y,p.w,p.h); ctx.fillRect(p.x,p.y-6,p.w,6); }
+
+      // Flaga
+      const f = level.flag;
+      ctx.fillStyle = '#444'; ctx.fillRect(f.x+6,f.y-10,4,f.h+10);
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--flag');
+      ctx.beginPath(); ctx.moveTo(f.x+10,f.y+10); ctx.lineTo(f.x+10,f.y+50); ctx.lineTo(f.x+60,f.y+30); ctx.closePath(); ctx.fill();
+
+      // Monety
+      for(const c of level.coins){ if(c.collected) continue; ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--coin'); ctx.beginPath(); ctx.ellipse(c.x+c.w/2,c.y+c.h/2, c.w/2, c.h/2, 0, 0, Math.PI*2); ctx.fill(); }
+
+      // Wrogowie
+      for(const e of level.enemies){ if(!e.alive) continue; drawEnemy(e); }
+
+      // Gracz
+      drawPlayer();
+    }
+
+    function drawPlayer(){
+      const color = getComputedStyle(document.documentElement).getPropertyValue('--player');
+      ctx.save();
+      ctx.translate(player.x + player.w/2, player.y + player.h/2);
+      ctx.scale(player.facing,1);
+      // Miganie przy niewrażliwości
+      if(player.invul>0 && Math.floor(elapsed*20)%2===0){ ctx.globalAlpha = 0.5; }
+      // Korpus
+      ctx.fillStyle = color; ctx.fillRect(-player.w/2, -player.h/2, player.w, player.h);
+      // Czapka
+      ctx.fillStyle = '#fff'; ctx.fillRect(-player.w/2, -player.h/2-6, player.w, 8);
+      // Oczy
+      ctx.fillStyle = '#111'; ctx.fillRect(4-player.w/2, -6, 4, 4);
+      ctx.restore();
+    }
+
+    function drawEnemy(e){
+      const c = getComputedStyle(document.documentElement).getPropertyValue('--enemy');
+      ctx.save(); ctx.translate(e.x, e.y);
+      ctx.fillStyle = c; ctx.fillRect(0,0,e.w,e.h);
+      ctx.fillStyle = '#fff'; ctx.fillRect(6,6,6,6); ctx.fillRect(e.w-12,6,6,6);
+      ctx.restore();
+    }
+
+    // Start gry
+    let coinsCollected = 0; uiCoins.textContent = coinsCollected;
+    uiLives.textContent = player.lives;
+    requestAnimationFrame(loop);
+
+    // Reset klawiszem R
+    addEventListener('keydown', (e)=>{ if(e.code==='KeyR'){ restartLevel(true);} });
+
+    // Podpowiedź
+    setTimeout(()=>{
+      showToast('Sterowanie: ← → oraz SPACJA. R — restart.');
+    }, 600);
+  </script>
+</body>
+</html>
